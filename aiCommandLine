@@ -1,0 +1,147 @@
+# incorporating AI access into the command line
+#
+ai() {
+    local model_instance="default"
+    local specific_model=""
+    local output_format="commands"
+    local query=""
+    local piped_input=""
+    local debug_output=false  # Add a debug flag, default is off
+
+    # Usage function (no changes needed here)
+    usage() {
+        echo "Usage: ai [options] [prompt]"
+        echo "       ~ai [options] [prompt]"
+        echo ""
+        echo "Options:"
+        echo "  -m <instance>[:<model>]  Select AI instance (1: local ollama, 2: remote aistudio)"
+        echo "                         Instance numbers:"
+        echo "                           1: Local Ollama"
+        echo "                           2: Remote AI Studio (aistudio.google.com)"
+        echo "                         Optional model specification after instance number (e.g., -m 1:llama3)"
+        echo "                         If no model specified, defaults are used."
+        echo "  -e                      Request a full explanation (explain output)"
+        echo "  -c                      Request command-line compatible output (command output - default)"
+        echo "  -d                      Enable debug output (show prompt being sent)" # Added -d for debug
+        echo ""
+        echo "Examples:"
+        echo "  ai -m 1 list files in current directory"
+        echo "  ai -m 1:llama3 explain how to use awk"
+        echo "  ai -m 2 -e what is the capital of France"
+        echo "  ls -l | ai -m 1 process this listing"
+        echo ""
+        echo "Available Ollama Models (local instance -m 1):"
+        if command -v ollama &> /dev/null; then
+            ollama list | awk 'NR>1 {print "  " $1}'
+        else
+            echo "  Ollama command not found. Is Ollama installed and in your PATH?"
+        fi
+        echo ""
+        echo "If no options or prompt are provided, this help message is shown."
+        return 1
+    }
+
+    if [ -z "$*" ]; then
+        usage
+        return 0
+    fi
+
+    # Process command line options (added -d to getopts)
+    while getopts "m:ecd" opt; do
+        case $opt in
+            m)
+                model_param="$OPTARG"
+                model_instance=$(echo "$model_param" | cut -d':' -f1)
+                specific_model=$(echo "$model_param" | cut -d':' -f2)
+
+                case "$model_instance" in
+                    1) model_instance="ollama" ;;
+                    2) model_instance="aistudio" ;;
+                    *) echo "Invalid instance number for -m option: $model_instance. Use 1 or 2." >&2; usage; return 1 ;;
+                esac
+                ;;
+            e) output_format="explain" ;;
+            c) output_format="commands" ;;
+            d) debug_output=true ;; # Enable debug output when -d is used
+            \?) echo "Invalid option: -$OPTARG" >&2; usage; return 1 ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [[ "$*" == "explain: "* ]]; then
+        output_format="explain"
+        query="${*:9}"
+    else
+        query="$*"
+    fi
+
+    if [ -p /dev/stdin ]; then
+        piped_input=$(cat)
+    fi
+
+    local ai_prompt
+
+    if [[ "$output_format" == "explain" ]]; then
+        ai_prompt="Provide a full, detailed explanation for the following query: $query"
+    else
+        ai_prompt="Generate a command-line compatible response for the following query. Provide only executable commands, flags, or relevant CLI syntax. Do not include explanations or natural language responses: $query"
+    fi
+
+    if [ -n "$piped_input" ]; then
+        ai_prompt+=$'\n\nBased on the following input:\n'"$piped_input"
+    fi
+
+    # Debug output: Print the prompt before sending if -d flag is used
+    if [[ "$debug_output" == true ]]; then
+        echo "-------------------- DEBUG AI PROMPT --------------------"
+        echo "Model Instance: $model_instance"
+        if [ -n "$specific_model" ]; then
+            echo "Specific Model: $specific_model"
+        fi
+        echo "Output Format: $output_format"
+        echo "---------------------------------------------------------"
+        echo "$ai_prompt"
+        echo "---------------------------------------------------------"
+    fi
+
+
+    case "$model_instance" in
+        ollama)
+            local ollama_model="llama3"
+            if [ -n "$specific_model" ]; then
+                ollama_model="$specific_model"
+            fi
+            if ! command -v ollama &> /dev/null; then
+                echo "Error: ollama command not found. Please ensure ollama is installed and in your PATH."
+                return 1
+            fi
+            response=$(ollama run "$ollama_model" "$ai_prompt")
+            echo "$response"
+            ;;
+        aistudio)
+            local aistudio_model="gemini-1.5-flash"
+             if [ -n "$specific_model" ]; then
+                ai_prompt+=" using model: $specific_model"
+            fi
+            response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AIzaSyA5cI9WiEVxJTDRGcjPUuyAQpUi12Up_JE" \
+                -H 'Content-Type: application/json' \
+                -X POST \
+                -d "{\"contents\": [{\"parts\":[{\"text\": \"$ai_prompt\"}]}]}")
+            echo "$response" | jq -r '.candidates[0].content.parts[0].text'
+            ;;
+        default)
+             local aistudio_model="gemini-1.5-flash"
+             response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AIzaSyA5cI9WiEVxJTDRGcjPUuyAQpUi12Up_JE" \
+                -H 'Content-Type: application/json' \
+                -X POST \
+                -d "{\"contents\": [{\"parts\":[{\"text\": \"$ai_prompt\"}]}]}")
+            echo "$response" | jq -r '.candidates[0].content.parts[0].text'
+            ;;
+        *)
+            echo "Internal error: model_instance variable in unexpected state: $model_instance" >&2
+            return 1
+            ;;
+    esac
+}
+
+alias '~ai'='ai'
