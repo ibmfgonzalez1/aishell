@@ -123,7 +123,7 @@ ai() {
              if [ -n "$specific_model" ]; then
                 ai_prompt+=" using model: $specific_model"
             fi
-            response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AIzaSyA5cI9WiEVxJTDRGcjPUuyAQpUi12Up_JE" \
+            response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" \
                 -H 'Content-Type: application/json' \
                 -X POST \
                 -d "{\"contents\": [{\"parts\":[{\"text\": \"$ai_prompt\"}]}]}")
@@ -131,7 +131,7 @@ ai() {
             ;;
         default)
              local aistudio_model="gemini-1.5-flash"
-             response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AIzaSyA5cI9WiEVxJTDRGcjPUuyAQpUi12Up_JE" \
+             response=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/$aistudio_model:generateContent?key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" \
                 -H 'Content-Type: application/json' \
                 -X POST \
                 -d "{\"contents\": [{\"parts\":[{\"text\": \"$ai_prompt\"}]}]}")
